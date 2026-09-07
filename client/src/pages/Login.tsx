@@ -9,9 +9,9 @@ import { ShieldCheck, ArrowLeft } from "lucide-react";
 export default function Login() {
   const [, navigate] = useLocation();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("player@aviator.local");
-  const [password, setPassword] = useState("PlayerPass123!");
-  const [displayName, setDisplayName] = useState("New Player");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const login = trpc.auth.login.useMutation({ onSuccess: () => navigate("/") });
   const register = trpc.auth.register.useMutation({
