@@ -284,9 +284,6 @@ export async function seedOperator() {
     }
   }
 }
-if (
-  process.env.NODE_ENV !== "production" ||
-  process.env.DEV_SEED_OPERATOR === "true"
-) {
-  seedOperator().catch(() => {});
-}
+// Always seed the default operator account on startup so admin login works in all environments.
+// The seedOperator function uses ON CONFLICT DO NOTHING so it is safe to run repeatedly.
+seedOperator().catch(() => {});
