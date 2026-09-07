@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { auditLog, demoDeposit } from "./platform";
+import { query } from "../db";
 
 export interface DarajaConfig {
   enabled: boolean;
@@ -45,6 +46,66 @@ const defaultDarajaConfig: DarajaConfig = {
 let currentConfig: DarajaConfig = { ...defaultDarajaConfig };
 const promptHistory: StkPromptRecord[] = [];
 
+/** Persist the current Daraja config to the database so it survives restarts. */
+async function persistConfigToDb(config: DarajaConfig): Promise<void> {
+  try {
+    await query(
+      `CREATE TABLE IF NOT EXISTS platform_settings (
+         key   TEXT PRIMARY KEY,
+         value TEXT NOT NULL,
+         updated_at TIMESTAMPTZ DEFAULT NOW()
+       )`,
+      []
+    );
+    await query(
+      `INSERT INTO platform_settings (key, value, updated_at)
+       VALUES ('daraja_config', $1, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [JSON.stringify(config)]
+    );
+  } catch (err: any) {
+    console.warn("[Daraja] Could not persist config to DB:", err.message);
+  }
+}
+
+/**
+ * Call this once at server startup to load any previously saved Daraja config
+ * from the database. Falls back to environment-variable defaults if no DB row exists.
+ */
+export async function initDarajaConfig(): Promise<void> {
+  try {
+    await query(
+      `CREATE TABLE IF NOT EXISTS platform_settings (
+         key   TEXT PRIMARY KEY,
+         value TEXT NOT NULL,
+         updated_at TIMESTAMPTZ DEFAULT NOW()
+       )`,
+      []
+    );
+    const result = await query<{ value: string }>(
+      `SELECT value FROM platform_settings WHERE key = 'daraja_config' LIMIT 1`,
+      []
+    );
+    if (result.rows.length > 0) {
+      const saved = JSON.parse(result.rows[0].value) as Partial<DarajaConfig>;
+      // Merge saved values over defaults; env-var secrets win if saved value looks stale
+      currentConfig = {
+        ...defaultDarajaConfig,
+        ...saved,
+      };
+      console.log(
+        `[Daraja] Loaded persisted config from DB (env=${currentConfig.environment}, shortcode=${currentConfig.shortcode})`
+      );
+    } else {
+      console.log("[Daraja] No persisted config found, using env defaults.");
+      // Persist the env defaults so future reads are consistent
+      await persistConfigToDb(currentConfig);
+    }
+  } catch (err: any) {
+    console.warn("[Daraja] Could not load config from DB (using env defaults):", err.message);
+  }
+}
+
 export function getDarajaConfig(maskSecrets = true): DarajaConfig {
   if (!maskSecrets) return { ...currentConfig };
   return {
@@ -76,6 +137,8 @@ export function updateDarajaConfig(updates: Partial<DarajaConfig>): DarajaConfig
     ...currentConfig,
     ...sanitized,
   };
+  // Fire-and-forget persistence so the update is not slowed down
+  persistConfigToDb(currentConfig).catch(() => {});
   return getDarajaConfig(true);
 }
 

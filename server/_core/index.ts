@@ -11,10 +11,12 @@ import { healthcheck } from "../db";
 import { registerRealtime } from "../realtime";
 import { validateEnvironment } from "./env";
 import { processPaymentWebhook } from "../webhooks";
-import { handleDarajaCallback } from "../services/daraja";
+import { handleDarajaCallback, initDarajaConfig } from "../services/daraja";
 
 async function startServer() {
   validateEnvironment();
+  // Load persisted Daraja config from DB before handling any requests
+  await initDarajaConfig();
   const app = express();
   const server = createServer(app);
   app.disable("x-powered-by");
