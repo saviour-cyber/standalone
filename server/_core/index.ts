@@ -6,7 +6,7 @@ import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic } from "./serveStatic";
 import { healthcheck } from "../db";
 import { registerRealtime } from "../realtime";
 import { validateEnvironment } from "./env";
@@ -77,8 +77,13 @@ async function startServer() {
     createExpressMiddleware({ router: appRouter, createContext })
   );
   registerRealtime(server);
-  if (process.env.NODE_ENV === "development") await setupVite(app, server);
-  else serveStatic(app);
+  if (process.env.NODE_ENV === "development") {
+    const viteModule = "./vite";
+    const { setupVite } = await import(viteModule);
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
   const port = Number(process.env.PORT || 3000);
   server.listen(port, () =>
     console.log(`Aviator platform listening on port ${port}`)
