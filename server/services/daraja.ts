@@ -28,16 +28,18 @@ export interface StkPromptRecord {
 // Default Safaricom Sandbox Daraja Credentials
 const defaultDarajaConfig: DarajaConfig = {
   enabled: true,
-  environment: "sandbox",
-  consumerKey: process.env.DARAJA_CONSUMER_KEY || "TestConsumerKeyDaraja2026",
-  consumerSecret: process.env.DARAJA_CONSUMER_SECRET || "TestConsumerSecretDaraja2026",
-  passkey:
+  environment: (process.env.PAYMENT_PROVIDER_ENV === "production" ? "production" : "sandbox") as "sandbox" | "production",
+  consumerKey: (process.env.DARAJA_CONSUMER_KEY || "TestConsumerKeyDaraja2026").trim(),
+  consumerSecret: (process.env.DARAJA_CONSUMER_SECRET || "TestConsumerSecretDaraja2026").trim(),
+  passkey: (
     process.env.DARAJA_PASSKEY ||
-    "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919",
-  shortcode: process.env.DARAJA_SHORTCODE || "174379",
-  callbackUrl:
+    "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+  ).trim(),
+  shortcode: (process.env.DARAJA_SHORTCODE || "174379").trim(),
+  callbackUrl: (
     process.env.DARAJA_CALLBACK_URL ||
-    "http://localhost:3000/api/webhooks/daraja",
+    "http://localhost:3000/api/webhooks/daraja"
+  ).trim(),
 };
 
 let currentConfig: DarajaConfig = { ...defaultDarajaConfig };
@@ -57,9 +59,18 @@ export function getDarajaConfig(maskSecrets = true): DarajaConfig {
 }
 
 export function updateDarajaConfig(updates: Partial<DarajaConfig>): DarajaConfig {
+  const sanitized: Partial<DarajaConfig> = {};
+  if (updates.enabled !== undefined) sanitized.enabled = updates.enabled;
+  if (updates.environment) sanitized.environment = updates.environment;
+  if (updates.consumerKey) sanitized.consumerKey = updates.consumerKey.trim();
+  if (updates.consumerSecret) sanitized.consumerSecret = updates.consumerSecret.trim();
+  if (updates.passkey) sanitized.passkey = updates.passkey.trim();
+  if (updates.shortcode) sanitized.shortcode = updates.shortcode.trim();
+  if (updates.callbackUrl) sanitized.callbackUrl = updates.callbackUrl.trim();
+
   currentConfig = {
     ...currentConfig,
-    ...updates,
+    ...sanitized,
   };
   return getDarajaConfig(true);
 }
@@ -182,13 +193,27 @@ export async function promptUserStkPush(input: {
           responseDescription = stkData.ResponseDescription || responseDescription;
           customerMessage = stkData.CustomerMessage || customerMessage;
           status = "PENDING";
+        } else {
+          const stkErr = await stkRes.text();
+          responseDescription = `Safaricom STK Dispatch Rejected (${stkRes.status}): ${stkErr || "Bad Request"}`;
+          customerMessage = responseDescription;
+          status = "FAILED";
         }
+      } else {
+        const tokenErr = await tokenRes.text();
+        responseDescription = `Safaricom OAuth Failed (${tokenRes.status}). Verify Consumer Key & Secret in Safaricom Developer Portal.`;
+        customerMessage = responseDescription;
+        status = "FAILED";
+        console.warn("[Daraja Gateway] OAuth token rejected by Safaricom:", tokenRes.status, tokenErr);
       }
     } catch (err: any) {
       console.warn(
-        "[Daraja Gateway] Live Safaricom API call failed; falling back to simulated prompt:",
+        "[Daraja Gateway] Live Safaricom API call failed:",
         err.message
       );
+      responseDescription = `Safaricom Connection Error: ${err.message}`;
+      customerMessage = responseDescription;
+      status = "FAILED";
     }
   }
 
