@@ -79,6 +79,7 @@ export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 320 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  username: varchar("username", { length: 32 }).notNull().unique(),
   displayName: varchar("display_name", { length: 120 }).notNull(),
   role: roleEnum("role").default("PLAYER").notNull(),
   status: accountStatusEnum("status").default("PENDING").notNull(),
@@ -93,6 +94,7 @@ export const users = pgTable("users", {
     .defaultNow()
     .notNull(),
 });
+
 
 export const refreshSessions = pgTable("refresh_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),

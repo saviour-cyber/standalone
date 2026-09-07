@@ -102,12 +102,25 @@ export const appRouter = router({
       .input(
         z.object({
           email: z.string().email(),
+          username: z
+            .string()
+            .min(3, "Username must be at least 3 characters")
+            .max(30, "Username must be at most 30 characters")
+            .regex(
+              /^[a-zA-Z0-9_]+$/,
+              "Username can only contain letters, numbers, and underscores"
+            ),
           password: z.string().min(8),
-          displayName: z.string().min(2).max(120),
+          displayName: z.string().min(2).max(120).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const user = await registerUser(input);
+        const user = await registerUser({
+          email: input.email,
+          username: input.username,
+          password: input.password,
+          displayName: input.displayName || input.username,
+        });
         const result = authResult(
           ctx,
           await (await import("./auth")).loginUser(input.email, input.password)
@@ -116,7 +129,7 @@ export const appRouter = router({
         return result;
       }),
     login: publicProcedure
-      .input(z.object({ email: z.string().email(), password: z.string() }))
+      .input(z.object({ email: z.string().min(1), password: z.string() }))
       .mutation(async ({ input, ctx }) => {
         try {
           const result = await loginUser(input.email, input.password);

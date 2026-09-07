@@ -10,6 +10,7 @@ export default function Login() {
   const [, navigate] = useLocation();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -22,8 +23,13 @@ export default function Login() {
     setError("");
     const action =
       mode === "login"
-        ? login.mutateAsync({ email, password })
-        : register.mutateAsync({ email, password, displayName });
+        ? login.mutateAsync({ email: email.trim(), password })
+        : register.mutateAsync({
+            email: email.trim(),
+            username: username.trim().toLowerCase(),
+            password,
+            displayName: displayName.trim() || username.trim(),
+          });
     action.catch(e => setError(e.message || "Unable to continue"));
   };
   return (
@@ -49,25 +55,39 @@ export default function Login() {
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="stack">
+            {mode === "register" && (
+              <label>
+                Username
+                <input
+                  value={username}
+                  onChange={e =>
+                    setUsername(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                    )
+                  }
+                  placeholder="e.g. pilot_alex"
+                  minLength={3}
+                  maxLength={30}
+                  pattern="^[a-zA-Z0-9_]{3,30}$"
+                  required
+                />
+                <span className="text-[11px] text-zinc-400 mt-1 block">
+                  3-30 letters, numbers, or underscores. Shown on game leaderboards.
+                </span>
+              </label>
+            )}
             <label>
-              Email
+              {mode === "login" ? "Email or Username" : "Email"}
               <input
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                type="email"
+                type={mode === "login" ? "text" : "email"}
+                placeholder={
+                  mode === "login" ? "pilot_alex or user@example.com" : "user@example.com"
+                }
                 required
               />
             </label>
-            {mode === "register" && (
-              <label>
-                Display name
-                <input
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  required
-                />
-              </label>
-            )}
             <label>
               Password
               <input
@@ -75,6 +95,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 type="password"
                 minLength={8}
+                placeholder="At least 8 characters"
                 required
               />
             </label>
@@ -84,7 +105,11 @@ export default function Login() {
               className="primary-button"
               disabled={login.isPending || register.isPending}
             >
-              {mode === "login" ? "Sign in to Play" : "Create Account"}
+              {login.isPending || register.isPending
+                ? "Processing..."
+                : mode === "login"
+                  ? "Sign in to Play"
+                  : "Create Account"}
             </Button>
           </form>
           <button

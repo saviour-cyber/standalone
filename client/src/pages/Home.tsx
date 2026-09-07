@@ -169,7 +169,9 @@ export default function Home() {
         </nav>
         <div className="nav-actions">
           <div className="hidden sm:flex flex-col items-end text-xs font-mono mr-2">
-            <span className="text-zinc-400 font-semibold">{user?.displayName}</span>
+            <span className="text-zinc-300 font-semibold">
+              {(user as any)?.username ? `@${(user as any).username}` : user?.displayName}
+            </span>
             <span className="text-lime-400 font-bold">{money(wallet?.availableMinor)}</span>
           </div>
           <button className="icon-button" onClick={logout} title="Sign out">

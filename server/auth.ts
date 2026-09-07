@@ -33,16 +33,27 @@ export function hashToken(token: string) {
 
 export async function registerUser(input: {
   email: string;
+  username: string;
   password: string;
-  displayName: string;
+  displayName?: string;
 }): Promise<PublicUser> {
   const email = input.email.trim().toLowerCase();
-  let existing = usersByEmail(email);
-  if (!existing && process.env.DATABASE_URL) {
+  const username = input.username.trim();
+
+  // Validate username format
+  if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
+    throw new Error(
+      "Username must be 3-30 characters long and contain only letters, numbers, and underscores"
+    );
+  }
+
+  // Check email uniqueness
+  let existingEmail = usersByEmail(email);
+  if (!existingEmail && process.env.DATABASE_URL) {
     try {
-      existing = (
+      existingEmail = (
         await query<StoredUser>(
-          'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
+          'SELECT id, email, password_hash AS "passwordHash", username, display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
           [email]
         )
       ).rows[0];
@@ -50,15 +61,36 @@ export async function registerUser(input: {
       if (process.env.NODE_ENV === "production") throw error;
     }
   }
-  if (existing) throw new Error("An account with this email already exists");
+  if (existingEmail) throw new Error("An account with this email already exists");
+
+  // Check username uniqueness
+  let existingUsername = usersByUsername(username);
+  if (!existingUsername && process.env.DATABASE_URL) {
+    try {
+      existingUsername = (
+        await query<StoredUser>(
+          'SELECT id, email, password_hash AS "passwordHash", username, display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1',
+          [username]
+        )
+      ).rows[0];
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") throw error;
+    }
+  }
+  if (existingUsername) {
+    throw new Error("This username is already taken. Please choose another one.");
+  }
+
   if (input.password.length < 8)
     throw new Error("Password must be at least 8 characters");
+
   const now = new Date();
   const user: StoredUser = {
     id: randomUUID(),
     email,
     passwordHash: await bcrypt.hash(input.password, 12),
-    displayName: input.displayName.trim() || "Player",
+    username,
+    displayName: input.displayName?.trim() || username,
     role: "PLAYER",
     status: "ACTIVE",
     kycStatus: "PENDING",
@@ -69,14 +101,16 @@ export async function registerUser(input: {
     updatedAt: now,
   };
   users.set(user.id, user);
+
   if (process.env.DATABASE_URL) {
     try {
       await query(
-        "INSERT INTO users (id, email, password_hash, display_name, role, status, kyc_status, jurisdiction, date_of_birth, risk_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        "INSERT INTO users (id, email, password_hash, username, display_name, role, status, kyc_status, jurisdiction, date_of_birth, risk_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         [
           user.id,
           user.email,
           user.passwordHash,
+          user.username,
           user.displayName,
           user.role,
           user.status,
@@ -97,15 +131,22 @@ function usersByEmail(email: string) {
   return Array.from(users.values()).find(user => user.email === email);
 }
 
-export async function loginUser(emailInput: string, password: string) {
-  const email = emailInput.trim().toLowerCase();
+function usersByUsername(username: string) {
+  const clean = username.trim().toLowerCase();
+  return Array.from(users.values()).find(
+    user => user.username && user.username.toLowerCase() === clean
+  );
+}
+
+export async function loginUser(identifierInput: string, password: string) {
+  const identifier = identifierInput.trim().toLowerCase();
   let user: StoredUser | undefined;
   if (process.env.DATABASE_URL) {
     try {
       user = (
         await query<StoredUser>(
-          'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
-          [email]
+          'SELECT id, email, password_hash AS "passwordHash", username, display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE LOWER(email) = $1 OR LOWER(username) = $1 LIMIT 1',
+          [identifier]
         )
       ).rows[0];
       if (user) users.set(user.id, user);
@@ -114,10 +155,10 @@ export async function loginUser(emailInput: string, password: string) {
     }
   }
   if (!user) {
-    user = usersByEmail(email);
+    user = usersByEmail(identifier) || usersByUsername(identifier);
   }
   if (!user || !(await bcrypt.compare(password, user.passwordHash)))
-    throw new Error("Invalid email or password");
+    throw new Error("Invalid email/username or password");
   if (["SUSPENDED", "SELF_EXCLUDED", "CLOSED"].includes(user.status))
     throw new Error("This account cannot sign in");
   return { user: publicUser(user), ...(await issueTokens(user.id)) };
@@ -171,7 +212,7 @@ export async function authenticateAccessToken(
       try {
         user = (
           await query<StoredUser>(
-            'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE id = $1 LIMIT 1',
+            'SELECT id, email, password_hash AS "passwordHash", username, display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE id = $1 LIMIT 1',
             [payload.sub]
           )
         ).rows[0];
@@ -260,13 +301,29 @@ export function listUsers() {
   return Array.from(users.values()).map(publicUser);
 }
 
+export async function ensureAuthSchema() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    await query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS username varchar(32);
+      CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (LOWER(username));
+      UPDATE users 
+      SET username = LOWER(REGEXP_REPLACE(SUBSTRING(display_name, 1, 15), '[^a-zA-Z0-9_]', '', 'g')) || '_' || SUBSTRING(id::text, 1, 6)
+      WHERE username IS NULL;
+    `);
+  } catch (e: any) {
+    console.warn("[Auth] Schema update notice:", e.message);
+  }
+}
+
 export async function seedOperator() {
+  await ensureAuthSchema();
   const email = "operator@aviator.local";
   if (process.env.DATABASE_URL) {
     try {
       const existing = (
         await query<StoredUser>(
-          'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
+          'SELECT id, email, password_hash AS "passwordHash", username, display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
           [email]
         )
       ).rows[0];
@@ -285,6 +342,7 @@ export async function seedOperator() {
     id: randomUUID(),
     email,
     passwordHash: bcrypt.hashSync("ChangeMe123!", 12),
+    username: "operator",
     displayName: "Operations Lead",
     role: "ADMIN" as const,
     status: "ACTIVE" as const,
@@ -299,11 +357,12 @@ export async function seedOperator() {
   if (process.env.DATABASE_URL) {
     try {
       await query(
-        "INSERT INTO users (id, email, password_hash, display_name, role, status, kyc_status, jurisdiction, date_of_birth, risk_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (email) DO NOTHING",
+        "INSERT INTO users (id, email, password_hash, username, display_name, role, status, kyc_status, jurisdiction, date_of_birth, risk_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (email) DO NOTHING",
         [
           operator.id,
           operator.email,
           operator.passwordHash,
+          operator.username,
           operator.displayName,
           operator.role,
           operator.status,
