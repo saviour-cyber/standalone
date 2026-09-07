@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aviator
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d aviator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://app:app@postgres:5432/aviator
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change-this-in-production
+      JWT_REFRESH_SECRET: change-this-refresh-secret-in-production
+      REAL_MONEY_ENABLED: "false"
+      PAYMENT_PROVIDER_ENV: sandbox
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: aviator-platform
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: DARAJA_CONSUMER_KEY
+        sync: false
+      - key: DARAJA_CONSUMER_SECRET
+        sync: false
+      - key: DARAJA_PASSKEY
+        sync: false
+      - key: DARAJA_SHORTCODE
+        value: "174379"
+      - key: DARAJA_CALLBACK_URL
+        sync: false
+      - key: REAL_MONEY_ENABLED
+        value: "false"
+      - key: PAYMENT_PROVIDER
+        value: "mock"
+      - key: PAYMENT_PROVIDER_ENV
+        value: "sandbox"
