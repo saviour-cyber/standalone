@@ -99,8 +99,8 @@ function usersByEmail(email: string) {
 
 export async function loginUser(emailInput: string, password: string) {
   const email = emailInput.trim().toLowerCase();
-  let user = usersByEmail(email);
-  if (!user && process.env.DATABASE_URL) {
+  let user: StoredUser | undefined;
+  if (process.env.DATABASE_URL) {
     try {
       user = (
         await query<StoredUser>(
@@ -112,6 +112,9 @@ export async function loginUser(emailInput: string, password: string) {
     } catch (error) {
       if (process.env.NODE_ENV === "production") throw error;
     }
+  }
+  if (!user) {
+    user = usersByEmail(email);
   }
   if (!user || !(await bcrypt.compare(password, user.passwordHash)))
     throw new Error("Invalid email or password");
@@ -163,7 +166,20 @@ export async function authenticateAccessToken(
     const { payload } = await jwtVerify(token, accessSecret);
     if (payload.kind !== "access" || typeof payload.sub !== "string")
       return null;
-    const user = users.get(payload.sub);
+    let user = users.get(payload.sub);
+    if (!user && process.env.DATABASE_URL) {
+      try {
+        user = (
+          await query<StoredUser>(
+            'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE id = $1 LIMIT 1',
+            [payload.sub]
+          )
+        ).rows[0];
+        if (user) users.set(user.id, user);
+      } catch {
+        // ignore
+      }
+    }
     return user ? publicUser(user) : null;
   } catch {
     return null;
@@ -245,11 +261,29 @@ export function listUsers() {
 }
 
 export async function seedOperator() {
-  if (usersByEmail("operator@aviator.local")) return;
+  const email = "operator@aviator.local";
+  if (process.env.DATABASE_URL) {
+    try {
+      const existing = (
+        await query<StoredUser>(
+          'SELECT id, email, password_hash AS "passwordHash", display_name AS "displayName", role, status, kyc_status AS "kycStatus", jurisdiction, date_of_birth AS "dateOfBirth", risk_status AS "riskStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE email = $1 LIMIT 1',
+          [email]
+        )
+      ).rows[0];
+      if (existing) {
+        users.set(existing.id, existing);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (usersByEmail(email)) return;
+
   const now = new Date();
-  const operator = {
-    id: "operator-seed",
-    email: "operator@aviator.local",
+  const operator: StoredUser = {
+    id: randomUUID(),
+    email,
     passwordHash: bcrypt.hashSync("ChangeMe123!", 12),
     displayName: "Operations Lead",
     role: "ADMIN" as const,
