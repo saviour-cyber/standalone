@@ -182,8 +182,9 @@ export default function Operations() {
       setDarajaEnabled(darajaConfig.data.enabled);
       setDarajaEnv(darajaConfig.data.environment);
       setConsumerKey(darajaConfig.data.consumerKey || "");
-      setConsumerSecret(darajaConfig.data.consumerSecret || "");
-      setPasskey(darajaConfig.data.passkey || "");
+      // Do not populate secret inputs with masked bullets to avoid overwriting real secrets
+      setConsumerSecret("");
+      setPasskey("");
       setShortcode(darajaConfig.data.shortcode || "174379");
       setCallbackUrl(darajaConfig.data.callbackUrl || "");
     }
@@ -924,23 +925,35 @@ export default function Operations() {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-zinc-400">Consumer Secret</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-zinc-400">Consumer Secret</label>
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {darajaConfig.data?.consumerSecret ? "Current: Configured" : "Not Set"}
+                      </span>
+                    </div>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       value={consumerSecret}
                       onChange={(e) => setConsumerSecret(e.target.value)}
-                      placeholder="Enter Consumer Secret"
+                      placeholder="Leave blank to keep existing configured secret"
                       className="bg-[#0b0e0d] border border-zinc-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
                     />
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-zinc-400">Lipa Na M-Pesa Online Passkey</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-zinc-400">Lipa Na M-Pesa Online Passkey</label>
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {darajaConfig.data?.passkey ? "Current: Configured" : "Not Set"}
+                      </span>
+                    </div>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       value={passkey}
                       onChange={(e) => setPasskey(e.target.value)}
-                      placeholder="Enter Passkey"
+                      placeholder="Leave blank to keep existing configured passkey"
                       className="bg-[#0b0e0d] border border-zinc-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
                     />
                   </div>
@@ -963,11 +976,11 @@ export default function Operations() {
                       updateDaraja.mutate({
                         enabled: darajaEnabled,
                         environment: darajaEnv,
-                        consumerKey,
-                        consumerSecret,
-                        passkey,
-                        shortcode,
-                        callbackUrl,
+                        consumerKey: consumerKey.trim() || undefined,
+                        consumerSecret: consumerSecret.trim() && !consumerSecret.includes("••••") ? consumerSecret.trim() : undefined,
+                        passkey: passkey.trim() && !passkey.includes("••••") ? passkey.trim() : undefined,
+                        shortcode: shortcode.trim() || undefined,
+                        callbackUrl: callbackUrl.trim() || undefined,
                       })
                     }
                     className="mt-2 bg-gradient-to-r from-lime-500 to-emerald-500 hover:from-lime-400 hover:to-emerald-400 text-black font-mono font-bold text-xs h-10 rounded-xl flex items-center justify-center gap-2"

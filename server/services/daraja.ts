@@ -62,11 +62,15 @@ export function updateDarajaConfig(updates: Partial<DarajaConfig>): DarajaConfig
   const sanitized: Partial<DarajaConfig> = {};
   if (updates.enabled !== undefined) sanitized.enabled = updates.enabled;
   if (updates.environment) sanitized.environment = updates.environment;
-  if (updates.consumerKey) sanitized.consumerKey = updates.consumerKey.trim();
-  if (updates.consumerSecret) sanitized.consumerSecret = updates.consumerSecret.trim();
-  if (updates.passkey) sanitized.passkey = updates.passkey.trim();
-  if (updates.shortcode) sanitized.shortcode = updates.shortcode.trim();
-  if (updates.callbackUrl) sanitized.callbackUrl = updates.callbackUrl.trim();
+  if (updates.consumerKey && updates.consumerKey.trim()) sanitized.consumerKey = updates.consumerKey.trim();
+  if (updates.consumerSecret && !updates.consumerSecret.includes("••••") && updates.consumerSecret.trim()) {
+    sanitized.consumerSecret = updates.consumerSecret.trim();
+  }
+  if (updates.passkey && !updates.passkey.includes("••••") && updates.passkey.trim()) {
+    sanitized.passkey = updates.passkey.trim();
+  }
+  if (updates.shortcode && updates.shortcode.trim()) sanitized.shortcode = updates.shortcode.trim();
+  if (updates.callbackUrl && updates.callbackUrl.trim()) sanitized.callbackUrl = updates.callbackUrl.trim();
 
   currentConfig = {
     ...currentConfig,
